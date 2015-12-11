@@ -2,9 +2,7 @@
 from scipy import ndimage as ndi
 from scipy.misc import imread, imresize
 from skimage.filters import gabor_kernel
-from sklearn.cross_validation import train_test_split
 from sklearn.decomposition import PCA
-from sklearn.grid_search import GridSearchCV
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -23,7 +21,7 @@ target_names = np.array(['healthy', 'glaucoma', 'diabetic retinopathy'])
 scale_factor = 0.1
 test_size = 0.25
 gamma = 0.001
-kernel = 'linear'
+kernel = 'poly'
 degree = 3
 
 ################################################################################
@@ -99,39 +97,53 @@ pca = PCA(n_components=50)
 X_imtrans = pca.fit(image_data).transform(image_data)
 pca = PCA(n_components=50)
 X_gbtrans = pca.fit(spat_data).transform(spat_data)
-X_new = np.concatenate((X_imtrans, spat_data), axis=1)
+#X_new = np.concatenate((X_imtrans, spat_data), axis=1)
+#X_new = np.concatenate((spat_data, X_imtrans), axis=1)
+#X_new = X_imtrans
+#X_new = X_gbtrans
 
 ################################################################################
 # Split data into a training and a test set
 
-X_train, X_test, y_train, y_test = train_test_split(X_new, target,
-                                                    test_size=test_size,
-                                                    random_state=42)
+#class1 = SVC(kernel='linear', gamma=gamma, probability=True)
+#class2 = SVC(kernel='linear', gamma=gamma, probability=True)
+#class3 = SVC(kernel='linear', gamma=gamma)
+class1 = KNeighborsClassifier(n_neighbors=5)
+class2 = KNeighborsClassifier(n_neighbors=5)
+class3 = KNeighborsClassifier(n_neighbors=5)
 
-svm = SVC(kernel='linear', gamma=gamma)
-neigh = KNeighborsClassifier(n_neighbors=5)
+n_samples = len(X_imtrans)
+X_imtrain = X_imtrans[:int(n_samples * (1 - test_size))]
+y_train = target[:int(n_samples * (1 - test_size))]
+X_imtest = X_imtrans[int(n_samples * (1 - test_size)):]
+y_test = target[int(n_samples * (1 - test_size)):]
 
-param_grid = {'gamma':[0.001, 0.0005, 0.0001], 
-              'kernel':['linear', 'poly', 'rbf']}
+class1.fit(X_imtrain, y_train)
+impred = class1.predict_proba(X_imtest)
 
-param_grid = {'n_neighbors':[3, 4, 5, 6, 7, 8]}
+X_trans1 = class1.predict_proba(X_imtrain)
 
-grid_search = GridSearchCV(svm, param_grid=param_grid, verbose=10)
-grid_search.fit(X_train, y_train)
-print(grid_search.best_estimator_)
-classifier = grid_search.best_estimator_
+X_gbtrain = X_gbtrans[:int(n_samples * (1 - test_size))]
+X_gbtest = X_gbtrans[int(n_samples * (1 - test_size)):]
+
+class2.fit(X_gbtrain, y_train)
+gbpred = class2.predict_proba(X_gbtest)
+
+X_trans2 = class2.predict_proba(X_gbtrain)
+
+x_newnew = np.concatenate((X_trans1, X_trans2), axis=1)
 
 ################################################################################
 # Train SVM classification model
 
-classifier.fit(X_train, y_train)
+class3.fit(x_newnew, y_train)
 print("Done in %0.3fs." % (time() - t2))
 print("")
 
 ################################################################################
 # Predict value on test set 
 
-predicted = classifier.predict(X_test)
+predicted = class3.predict(np.concatenate((impred, gbpred), axis=1))
 
 print("Classification report for classifier %s:\n%s\n"
       % (classifier, classification_report(y_test, predicted)))
